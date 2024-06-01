@@ -37,8 +37,8 @@ namespace pi3hat_hardware_interface
     hardware_interface::CallbackReturn Pi3HatHardwareInterface::on_init(
         const hardware_interface::HardwareInfo &info)
     {
-        if (
-            hardware_interface::SystemInterface::on_init(info) !=
+        // Call the parent's BaseInterface on_init() function
+        if (base_interface::BaseInterface::on_init(info) !=
             hardware_interface::CallbackReturn::SUCCESS)
         {
             return hardware_interface::CallbackReturn::ERROR;
@@ -68,40 +68,20 @@ namespace pi3hat_hardware_interface
         // Determine which actuator types are in use and determine the span size required.
         for (const hardware_interface::ComponentInfo &joint : info_.joints)
         {
-            if ("cheetah" == joint.parameters.at("can_protocol"))
+            switch(protocolMap.at(joint.parameters.at("can_protocol")))
             {
-                RCLCPP_ERROR(rclcpp::get_logger("Pi3HatHardwareInterface"), "CHEETAH PROTOCOL NOT IMPLEMENTED YET");
-                return hardware_interface::CallbackReturn::ERROR;
-                
-                // hw_actuator_can_protocols_.push_back(CanProtocol::CHEETAH);
-                // tx_capacity_ += TxAllocation::CHEETAH_TX;
-                // rx_capacity_ += RxAllocation::CHEETAH_RX;
-            }
-            else if ("myactuator" == joint.parameters.at("can_protocol"))
-            {
-                RCLCPP_ERROR(rclcpp::get_logger("Pi3HatHardwareInterface"), "CUBEMARS PROTOCOL NOT IMPLEMENTED YET");
-                return hardware_interface::CallbackReturn::ERROR;
-                // throw an error since this isnt supported yet
-                hw_actuator_can_protocols_.push_back(CanProtocol::MYACTUATOR);
-                tx_capacity_ += TxAllocation::MYACTUATOR_TX;
-                rx_capacity_ += RxAllocation::MYACTUATOR_RX;
-            }
-            else if ("moteus" == joint.parameters.at("can_protocol"))
-            {
-                hw_actuator_can_protocols_.push_back(CanProtocol::MOTEUS);
-                tx_capacity_ += TxAllocation::MOTEUS_TX;
-                rx_capacity_ += RxAllocation::MOTEUS_RX;
-            }
-            else if ("odrive" == joint.parameters.at("can_protocol"))
-            {
-                hw_actuator_can_protocols_.push_back(CanProtocol::ODRIVE);
-                tx_capacity_ += TxAllocation::ODRIVE_TX;
-                rx_capacity_ += RxAllocation::ODRIVE_RX;
-            }
-            else
-            {
-                RCLCPP_ERROR(rclcpp::get_logger("Pi3HatHardwareInterface"), "can_protocol parameter does not match a valid protocol");
-                return hardware_interface::CallbackReturn::ERROR;
+                // TODO: add support for Cheetah and Cubemars actuators
+                case CanProtocol::MOTEUS:
+                    tx_capacity_ += TxAllocation::MOTEUS_TX;
+                    rx_capacity_ += RxAllocation::MOTEUS_RX;
+                    break;
+                case CanProtocol::ODRIVE:
+                    tx_capacity_ += TxAllocation::ODRIVE_TX;
+                    rx_capacity_ += RxAllocation::ODRIVE_RX;
+                    break;
+                default:
+                    RCLCPP_ERROR(rclcpp::get_logger("Pi3HatHardwareInterface"), "Failed to start: unknown CAN protocol");
+                    return hardware_interface::CallbackReturn::ERROR;
             }
 
             /**
@@ -183,9 +163,9 @@ namespace pi3hat_hardware_interface
         //      uint8_t data[8];
 
         // onInit() -> Initialize the CAN Protocol Interfaces
-        for (uint i = 0; i < info_.joints.size(); i++)
+        for (const hardware_interface::ComponentInfo &joint : info_.joints)
         {
-            switch (hw_actuator_can_protocols_[i])
+            switch (protocolMap.at(joint.parameters.at("can_protocol")))
             {
             case CanProtocol::MOTEUS:
             {
@@ -201,22 +181,21 @@ namespace pi3hat_hardware_interface
                 // Create new actuator and add shared pointer to vector
                 hw_actuators_.push_back(
                     std::make_shared<ODriveActuator>(
-                        hw_actuator_can_ids_[i],
-                        hw_actuator_can_channels_[i],
-                        info_.joints[i].name, // TODO: either add this parameter to this class and the URDF or create a nameless constructor in actuator
-                        hw_actuator_axis_directions_[i],
-                        hw_actuator_position_offsets_[i],
-                        hw_actuator_gear_ratios_[i],
-                        hw_actuator_torque_constants_[i],
-                        hw_actuator_effort_limits_[i],
-                        hw_actuator_position_mins_[i],
-                        hw_actuator_position_maxs_[i],
-                        hw_actuator_velocity_limits_[i],
-                        hw_actuator_kp_limits_[i],
-                        hw_actuator_kd_limits_[i],
-                        hw_actuator_ki_limits_[i],
-
-                        hw_actuator_soft_start_durations_ms_[i]
+                        std::stoi(joint.parameters.at("can_id")),
+                        std::stoi(joint.parameters.at("can_channel")),
+                        joint.name, // TODO: either add this parameter to this class and the URDF or create a nameless constructor in actuator
+                        std::stoi(joint.parameters.at("axis_direction")),
+                        std::stod(joint.parameters.at("position_offset")),
+                        std::stod(joint.parameters.at("gear_ratio")),
+                        std::stod(joint.parameters.at("torque_constant")),
+                        std::stod(joint.parameters.at("effort_max")),
+                        std::stod(joint.parameters.at("position_min")),
+                        std::stod(joint.parameters.at("position_max")),
+                        std::stod(joint.parameters.at("velocity_max")),
+                        std::stod(joint.parameters.at("kp_max")),
+                        std::stod(joint.parameters.at("kd_max")),
+                        std::stod(joint.parameters.at("ki_max")),
+                        std::stoi(joint.parameters.at("soft_start_duration_ms"))
                     )
                 );
 
@@ -321,55 +300,6 @@ namespace pi3hat_hardware_interface
         return hardware_interface::CallbackReturn::SUCCESS;
     }
 
-    // TODO: Update the state interfaces . Do we want to add Temperature, Voltage?
-    std::vector<hardware_interface::StateInterface> Pi3HatHardwareInterface::export_state_interfaces()
-    {
-        std::vector<hardware_interface::StateInterface> state_interfaces;
-
-        // Add joint state interfaces
-        for (auto i = 0u; i < info_.joints.size(); i++)
-        {
-            state_interfaces.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_state_positions_[i]));
-            state_interfaces.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_state_velocities_[i]));
-            state_interfaces.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_EFFORT, &hw_state_efforts_[i]));
-            state_interfaces.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_TEMPERATURE, &hw_state_temperatures_[i]));
-            state_interfaces.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, 'error', &hw_state_errors_[i]));
-            state_interface.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, 'state', &hw_state_states_[i]));
-            state_interface.emplace_back(hardware_interface::StateInterface(
-                info_.joints[i].name, 'voltage', &hw_state_voltages_[i]));
-        }
-
-        // Add IMU state interfaces
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "orientation.x", &hw_state_imu_orientation_[0]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "orientation.y", &hw_state_imu_orientation_[1]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "orientation.z", &hw_state_imu_orientation_[2]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "orientation.w", &hw_state_imu_orientation_[3]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "angular_velocity.x", &hw_state_imu_angular_velocity_[0]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "angular_velocity.y", &hw_state_imu_angular_velocity_[1]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "angular_velocity.z", &hw_state_imu_angular_velocity_[2]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "linear_acceleration.x", &hw_state_imu_linear_acceleration_[0]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "linear_acceleration.y", &hw_state_imu_linear_acceleration_[1]));
-        state_interfaces.emplace_back(hardware_interface::StateInterface(
-            "imu_sensor", "linear_acceleration.z", &hw_state_imu_linear_acceleration_[2]));
-
-        return state_interfaces;
-    }
-
     hardware_interface::CallbackReturn Pi3HatHardwareInterface::on_configure(
         const rclcpp_lifecycle::State & /*previous_state*/)
     {
@@ -389,28 +319,6 @@ namespace pi3hat_hardware_interface
         RCLCPP_INFO(rclcpp::get_logger("Pi3HatHardwareInterface"), "Successfully configured!");
 
         return hardware_interface::CallbackReturn::SUCCESS;
-    }
-
-    std::vector<hardware_interface::CommandInterface> Pi3HatHardwareInterface::export_command_interfaces()
-    {
-        std::vector<hardware_interface::CommandInterface> command_interfaces;
-        for (auto i = 0u; i < info_.joints.size(); i++)
-        {
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_command_positions_[i]));
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_command_velocities_[i]));
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, hardware_interface::HW_IF_EFFORT, &hw_command_efforts_[i]));
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, "kp", &hw_command_kps_[i]));
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, "kd", &hw_command_kds_[i]));
-            command_interfaces.emplace_back(hardware_interface::CommandInterface(
-                info_.joints[i].name, "ki", &hw_command_kis_[i]));
-        }
-
-        return command_interfaces;
     }
 
     hardware_interface::CallbackReturn Pi3HatHardwareInterface::on_activate(
@@ -466,6 +374,7 @@ namespace pi3hat_hardware_interface
             }
             if (enabled_count == hw_state_positions_.size())
             {
+                update_actuator_state_interfaces()
                 RCLCPP_INFO(rclcpp::get_logger("Pi3HatHardwareInterface"), "Successfully activated!");
                 return hardware_interface::CallbackReturn::SUCCESS;
             }

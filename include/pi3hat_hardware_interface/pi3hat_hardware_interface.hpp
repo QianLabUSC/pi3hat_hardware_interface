@@ -33,6 +33,9 @@
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 
+// header for the base class definition
+#include "base_interface/base_interface.hpp"
+
 #include "pi3hat/pi3hat.h"
 #include "actuators/actuator_base.h"
 #include "actuators/odrive_actuator.h"
@@ -42,7 +45,7 @@
 
 namespace pi3hat_hardware_interface
 {
-    class Pi3HatHardwareInterface : public hardware_interface::SystemInterface
+    class Pi3HatHardwareInterface : public base_interface::BaseInterface
     {
     public:
         RCLCPP_SHARED_PTR_DEFINITIONS(Pi3HatHardwareInterface)
@@ -171,7 +174,7 @@ namespace pi3hat_hardware_interface
 
         void assign_frame(mjbots::pi3hat::CanFrame frame);
 
-        void update_state_interfaces();
+        void update_actuator_state_interfaces();
 
         void busy_wait_us(unsigned long microsec) {
             // Convert microseconds to clock ticks. std::CLOCKS_PER_SEC is the number of clock ticks per second.
@@ -198,6 +201,13 @@ namespace pi3hat_hardware_interface
             MYACTUATOR, // MyActuator, LKMTech
             MOTEUS,      // Moteus (non-FD CAN)
             ODRIVE,      // ODrive
+        };
+
+        std::unordered_map<std::string, CanProtocol> protocolMap = {
+            {"cheetah", CanProtocol::CHEETAH},
+            {"myactuator", CanProtocol::MYACTUATOR},
+            {"moteus", CanProtocol::MOTEUS},
+            {"odrive", CanProtocol::ODRIVE}
         };
 
         enum TxAllocation
@@ -244,51 +254,8 @@ namespace pi3hat_hardware_interface
         size_t tx_capacity_ = 36; // Default initial capacity
         size_t rx_capacity_ = 36; // Default initial capacity
 
-        // IMU state
-        std::array<double, 4> hw_state_imu_orientation_;         // x, y, z, w
-        std::array<double, 3> hw_state_imu_angular_velocity_;    // x, y, z
-        std::array<double, 3> hw_state_imu_linear_acceleration_; // x, y, z
-
-        // Actuator CAN config
-        std::vector<int> hw_actuator_can_channels_;
-        std::vector<int> hw_actuator_can_ids_;
-        std::vector<CanProtocol> hw_actuator_can_protocols_;
+        // Actuator List
         std::vector<std::shared_ptr<ActuatorBase>> hw_actuators_;
-
-        // Actuator parameters
-        std::vector<int> hw_actuator_axis_directions_;
-        std::vector<double> hw_actuator_position_offsets_;
-        std::vector<double> hw_actuator_gear_ratios_;
-        std::vector<double> hw_actuator_torque_constants_;
-        std::vector<int> hw_actuator_soft_start_durations_ms_;
-
-        // Actuator limits
-        std::vector<double> hw_actuator_position_mins_; 
-        std::vector<double> hw_actuator_position_maxs_;
-        std::vector<double> hw_actuator_velocity_limits_;
-        std::vector<double> hw_actuator_effort_limits_;
-        std::vector<double> hw_actuator_kp_limits_;
-        std::vector<double> hw_actuator_kd_limits_;
-        std::vector<double> hw_actuator_ki_limits_;
-
-        // Actuator motor states
-        std::vector<double> hw_state_positions_;
-        std::vector<double> hw_state_velocities_;
-        std::vector<double> hw_state_efforts_;
-
-        // Actuator status/misc states
-        std::vector<double> hw_state_temperatures_;
-        std::vector<int> hw_state_errors_;
-        std::vector<int> hw_state_states_;
-        std::vector<double> hw_state_voltages_;
-
-        // Actuator commands
-        std::vector<double> hw_command_positions_;
-        std::vector<double> hw_command_velocities_;
-        std::vector<double> hw_command_efforts_;
-        std::vector<double> hw_command_kps_;
-        std::vector<double> hw_command_kds_;
-        std::vector<double> hw_command_kis_;
     };
 
 } // namespace pi3hat_hardware_interface
